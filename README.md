@@ -159,3 +159,125 @@ README.md                            本文件
 
 本看板仅用于数据观察与学习，**不构成任何投资建议**。轮动信号为动量口径的历史统计，
 不代表未来走势，请独立判断。
+
+---
+
+## 附录 · 2026-11-05 全量整改记录（给维护者 / 给 AI 读）
+
+> **这一节是什么**：AI 维护助手在 2026-11-05 对账号下 6 个仓库做完一次「大范围彻底修复」后追加的说明。目的只有一个——**让下一次维护（不管人或 AI）能看懂每个改动为什么做、哪些绝对不能回退**。
+>
+> **怎么读**：改任何代码之前，先读本 README 前文的「维护须知 / 铁律 / 给 AI 的维护提示词」，再读本附录。**两者冲突时以前文铁律为准**；本附录只解释本次改动，不新增、不覆盖任何设计口径。
+>
+> **本次原则**：用户要求「稳定、基本无维护、占用空间少、不自动生成垃圾」，并明确「修改前先看 README 的设计思路与维护须知」。因此本次只修**确定性 bug、静默失败、危险工作流行为、文档与代码不一致、依赖版本失控、运行时垃圾文件**；**没有做架构改造，没有删任何数据资产，没有改任何口径/阈值/单位/cron/构建顺序**。
+>
+> **本次改动范围**：6 仓共 40 个文件、0 删除；逐仓白名单精确提交，全程无 `--force`、无 rebase 冲突。**上线后的串行补测又追加了一次 pandas 3.x 兼容性修复（3 仓 6 文件，见 F 节），所以最终线上状态以 F 节为准，A 表里凡是写 `pandas<4` 的地方都已收紧为 `pandas<3`**。
+
+### A. 本次改了什么（逐文件）
+
+| 文件 | 原始缺陷（为什么必须改） | 本次修法 | 依据 / 约束 |
+|---|---|---|---|
+| `.github/workflows/generate_page.py`（10 处） | `run_backtest*` 返回 3 值但 2 处调用按 2 值解包（**必崩**）；主流程 7 处 `print("ERROR") + return`（列名无法识别、数据不足）**静默失败**——CI 显示成功却不更新页面；最大回撤写死 `-37.4%`；页脚数据来源写 AKShare | 3 值返回与 2 处调用点解包对齐；7 处改 `raise RuntimeError`；最大回撤用真实 `max_dd` 计算；页脚改「自建 a-stock-api Worker」 | 「任一指数取不到数据应中止并保留上一版页面，绝不能用 0 或前一日数据顶替」；`generate_page.py` 在 `.github/workflows/` 下 |
+| `.github/workflows/generate_page.py`（补测二次修复） | `resample('M')` 在 pandas 3.1.1 抛 `ValueError: 'M' is no longer supported`，第一次补测整轮失败 | 改 `resample('ME')`（pandas 2.3.3 / 3.0.0 语义一致，本地实测输出一致） | 见 F 节；**不要改回 `'M'`** |
+| `requirements.txt` | **缺 `matplotlib`**，但 `generate_page.py` 会 import，README 给的本地命令必然失败；其余依赖无上界 | 补 `matplotlib>=3.7,<4`；pandas 锁 `>=2.0.0,<3` 并加注释说明 3.x 移除 `resample('M')`、Copy-on-Write、字符串 dtype 变更；其余加上界 | 五、本地运行；见 F 节 |
+| `.github/workflows/daily_update.yml` | 无数据有效性守卫、Python 版本未固定；`pip install` 行完全无上界，补测时装到 pandas 3.1.1 | 插入守卫；固定 Python 3.11；pip install 改 `pandas>=2.0.0,<3` `numpy<3` `matplotlib<4` `requests<3`，与 requirements.txt 同步（见 F 节） | 阈值两份同步的设计；线上跑的是 workflow 的 pip install |
+| `.github/workflows/watchdog.yml`（2 处） | 硬编码**上游仓库** `wwww1998/rotation-monitor`，对本仓兜底无效（README §7.3 已标为已知残留） | 改指本仓 `wj624/rotation-monitor` | §7.3 明确授权修改；`curl` 已有 `--max-time 60`，早期报告误判「无超时」，本次未动 |
+| `.github/workflows/monthly-snapshot.yml` | 每月自动 force 重写历史 | **停用 `schedule`**，保留 `workflow_dispatch`；guard 增加 `*.json` 校验；回滚 SHA `retention-days` 90 → 365 | 不删文件、不改主体 |
+| `EDGEONE_DEPLOY.md` | 仓库名仍是上游；`portal.html` 应为 `public/index.html`；「14 次/天」与「5 个看板仓库」等数字错误 | 逐项订正（每日 1 次；watchdog 是工作日每 20 分钟检查、最多 27 次检查；看板数按同文清单为 4 个） | 部署文档 |
+| `README.md` | 策略描述、数据来源（AKShare）、缓存描述过时；§7.3 已知问题未标已修复；「约 59 KB / 3 MB」等易变数字 | 改成比值阈值 `BUY 0.20 / SELL 0.40`、来源 `a-stock-api Worker`、缓存 `_cache + CACHE_TTL=300`；§7.3 标注已修复并保留原因说明；删过时数字 | 七、给 AI 的维护提示词 7.1 / 7.2 |
+
+### B. 本次坚决没改（硬约束，改了就是破坏设计）
+
+- **`BUY_THRESHOLD = 0.20` / `SELL_THRESHOLD = 0.40` 两份（`generate_page.py` 与 `main.py`）必须同步，本次未改数值**。
+- **`generate_page.py` 在 `.github/workflows/` 下**（不在仓库根目录）。
+- **`public/index.html` 是每天工作流提交回 `main` 的产物，供 EdgeOne Pages 检出**：别手改、别按「产物不入库」处理。
+- **H30269 走 `/api/csindex`，399006 走 `/api/kline`**；任一指数取不到数据应中止并保留旧页面。
+- `watchdog.yml` 的 `curl` 已有 `--max-time 60`，未改。
+- **pandas 必须 `<3`、`resample` 用 `'ME'`**（F 节），且 requirements.txt 与 daily_update.yml 两处同步 —— 第一次补测失败的根因就是漏改 workflow 的 pip install 行。
+
+### C. 明令作废的旧建议（别再走回头路）
+
+第一轮「只读体检报告」里提出过若干架构建议，**读完各仓 README 的维护须知后已全部作废**，本次一个都没采纳：
+
+- ❌ **「产物不入库 / 数据与页面不进 git」**：本仓产物是 Pages / EdgeOne Pages / GAS 的**数据源本身**，从仓库检出，必须入库。
+- ❌ **「删 `cache/` / 改回 `actions/cache`」**：`cache/` 是断网降级与历史累积的命根子。
+- ❌ **「删数据资产 / 删摘要文件 / 清理 `echarts.min.js` / 删 `akshare` / 删 `westock-data`」**：均被 README 明确点名保护。
+- ❌ **「把 `except: pass` 全改抛错」**：局部容错（TTL 状态、日志编码、临时文件清理、上游回退链）是设计，不是缺陷；本次只把**主流程**的静默失败改成显式失败。
+- ❌ 早期报告曾把 GAS 脚本里的 `RECEIVER_EMAIL` 硬编码列为 bug —— **不是 bug**，它是 `CONFIG` 里明确列出的默认配置项，本次未改。
+
+> 若下次 AI 读到 `wj624-仓库体检与整改思路.md` 或 `wj624-整改落地手册.md` 里的 P1/P2 建议，请以本附录为准：**那两份是整改前的中间产物，已作废**。
+
+
+### D. 给 AI 的维护边界（可复制这段）
+
+```
+你在维护 wj624/rotation-monitor。动手前：
+1. 先读 README 七、给 AI 的维护提示词（7.2 三个坑），再读本附录。
+2. 绝对不要：把 public/index.html 当「产物不入库」清掉；手改 public/index.html；
+   只改一处阈值（generate_page.py 与 main.py 两份必须同步）；用 0 或前一日数据顶替缺失指数；
+   把 generate_page.py 挪出 .github/workflows/；恢复 monthly-snapshot 自动 schedule。
+3. 两个指数必须都取到数据才算比值；任一为空就中止并保留上一版页面。
+4. 本附录 A 表已修的 3 值解包、7 处静默失败、写死 -37.4%、watchdog 指向上游，别回退。
+5. pandas 锁 <3、resample 用 'ME' 不要改回 'M'；改依赖必须 requirements.txt 与 daily_update.yml 两处同步（F 节）。
+6. 改了数据源/口径/阈值，同步 README「一、监控什么 / 三、数据来源 / 四、自动运行」+ 两份阈值常量。
+7. 线上写操作：精确 git add、中文 commit、git pull --rebase、绝不 force。
+```
+### E. 验证与回滚
+
+| 项目 | 说明 |
+|---|---|
+| 本地验证 | 补丁脚本在从原仓库 `git archive HEAD` 导出的**干净副本**上端到端重跑：59/59 替换、2 处追加、2 个新建 `.gitignore`、5 个 `monthly-snapshot.yml` 降级；`.py` 用 `ast.parse`、`worker.js` 用 `node --check`、`.yml` 用 `yaml.safe_load`，语法自检 26 项全 PASS |
+| README 硬约束复核 | 61 项，实际 61/61 通过（初检 5 项 FAIL 均为检查规则误报） |
+| 线上内容核验 | GitHub API 独立核验：commit 主题、变更文件集合与白名单逐仓一致、**0 删除**、关键修复内容、数据资产 12/12 在线 |
+| 线上实测 | 2026-11-05 串行手动触发 4 个核心 workflow 并逐个核验：4/4 全部 success、每仓产物 commit 均 removed=0、关键数据资产完好。第一次补测在 rotation-monitor 暴露 pandas 3.x 移除 resample('M') 的问题，双保险修复后重跑通过。明细与最终线上 HEAD 见下方「F. 补测实测记录」 |
+| 令牌 / 垃圾 | 交付文件 `ghp_` / `github_pat_` 0 命中；仓库内不生成 `__pycache__` |
+
+**回滚**：优先 `git revert <整改 commit>` 生成反向 commit 再 push（保留历史、无需 force）。整改前基线 `54e04c85`，整改 commit `b5f01afc`（`git revert b5f01afc`）；pandas 3.x 二次修复 commit `ee80a439`（见 F 节，一并保留）。**本仓所有 workflow 都是 `schedule + workflow_dispatch`，没有 `push` 触发**，所以整改 commit 当时没有触发任何 run。**2026-11-05 第一次手动 dispatch 补测（run 41989043660）因 pandas 3.x 失败**，按 F 节双保险修复后重跑（run 41990306988）**success**，产物 commit `1c6dd808`、0 删除、`public/index.html` 完好。
+
+**下次改代码前的三行自检**（沿用前文铁律）：
+1. 这个文件是源码还是产物？产物只能靠重跑生成，不能手改。
+2. 改动会不会破坏「数据资产 / 口径 / 阈值 / 单位 / cron / 构建顺序」？会就停手。
+3. 改完要跑什么验证、要同步 README 哪几节？写进 commit body。
+
+### F. 补测实测记录（2026-11-05，含 pandas 3.x 兼容性二次修复）
+
+整改 commit 上线后，用户要求对 4 个「`push` 不触发、只在 `schedule` / `workflow_dispatch` 跑」的核心抓数流水线做**串行手动触发补测**：一个跑完、核验通过，再触发下一个，避免并发写 `main` 冲突。
+
+**第一次补测在 `rotation-monitor` 失败**，日志关键行：
+
+```
+ValueError: 'M' is no longer supported for offsets. Please use 'ME' instead.
+  File ".github/workflows/generate_page.py", line 130, in ...
+    monthly = bd.set_index('date')['close_cyb'].resample('M').last()
+```
+
+根因：pandas 3.1.1 于 2026-11-04 发布，移除了 `resample('M')` 别名，并默认开启 Copy-on-Write、改变字符串 dtype。**整改前依赖本无上界**；本轮整改把上界写成 `<4` 过宽，且 `daily_update.yml` 的 `pip install` 行仍是完全无上界 —— 这是策略失误，已按下面「双保险」纠正。
+
+**双保险修复（3 仓 6 文件）**：
+
+1. **代码**：`rotation-monitor/.github/workflows/generate_page.py` 的 `resample('M')` → `resample('ME')`（pandas 2.3.3 与 3.0.0 下语义一致，均为月末重采样，本地实测两种版本输出一致）。
+2. **依赖**：所有 pandas 约束收紧为 `<3`，且 **`requirements.txt` 与 workflow 的 `pip install` 行两处同步** —— 线上实际执行的是 workflow 里的 pip install，不是 requirements.txt，只改一处等于没改。
+3. **二次 commit**：`rotation-monitor` `ee80a439`、`earl-etf-dashboard` `af8b5237`、`national-team-etf-flow` `b0ef1c6c`。
+
+**修复后重跑，4/4 全部通过**：
+
+| 仓库 / workflow | run id | 结论 | 产物 commit（前 → 后） | 删除 | 关键资产 |
+|---|---|---|---|---|---|
+| `rotation-monitor` / `daily_update.yml` | 41990306988 | success | `ee80a439` → `1c6dd808` | 0 | `public/index.html` 完好 |
+| `us-world-economy-dashboard` / `update.yml` | 41990418511 | success | `e9ee6da9` → `0b18f069` | 0 | `cache/` · `index.html` · `llms.txt` · `snapshot.md` · `version.txt` 完好 |
+| `earl-etf-dashboard` / `update.yml` | 41990472730 | success | `af8b5237` → `abdee20d` | 0 | `cache/` · `version.txt` · `llms.txt` · `latest.json` · `index.html` 完好 |
+| `national-team-etf-flow` / `daily-refresh.yml` | 41990810766 | success | `b0ef1c6c` → `5110f0f1` | 0 | `_etf_shares_cache.json` · `echarts.min.js` · `index.html` 完好 |
+
+> `a-stock-api`（Worker 部署 + 13 个冒烟端点）与 `etf-lsi`（daily report）由 `push` 触发，整改当时即 `success`，不在上表。
+
+**写本附录时各仓 `main` 的线上实况**（均为短 SHA，位数不影响定位）：
+
+| 仓库 | 整改 commit | pandas 二次修复 | 补测产物 / 当前 HEAD |
+|---|---|---|---|
+| `a-stock-api` | `daea02a` | — | `daea02a` |
+| `us-world-economy-dashboard` | `e9ee6da` | — | `0b18f06` |
+| `earl-etf-dashboard` | `75255bd` | `af8b523` | `abdee20` |
+| `national-team-etf-flow` | `016a401` | `b0ef1c6` | `5110f0f` |
+| `rotation-monitor` | `b5f01af` | `ee80a43` | `1c6dd80` |
+| `etf-lsi` | `606958f` | — | `8e8f74f`（自动产物 commit 会继续前移，属正常） |
+
+> **给 AI 的硬约束**：这 3 个仓的 pandas **必须锁 `<3`**，不要「简化」成 `<4` 或去掉上界；`resample('ME')` 不要改回 `'M'`。改依赖时**必须同时改 `requirements.txt` 和 workflow 的 `pip install` 行** —— 第一次补测就是这样崩的。另外这 6 仓**没有单元测试套件**，上述「实测」指真实 workflow 执行 + 产物核验，改完代码仍应手动 dispatch 一次确认。
