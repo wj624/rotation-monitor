@@ -28,7 +28,7 @@
 
 - **创业板指（399006）**：高弹性成长风格代表
 - **红利低波（H30269）**：低波动、高股息的防御风格代表
-- **轮动信号**：两指数近 N 日相对涨跌幅（动量），谁强持谁
+- **轮动信号**：以「创业板指 ÷ 红利低波」归一化比值对照固定阈值切换（`< BUY_THRESHOLD=0.20` 持创业板、`> SELL_THRESHOLD=0.40` 持红利低波）；阈值在 `generate_page.py` 第 21–22 行与 `main.py` 第 24–25 行各写一份，必须同步改
 
 ## 二、页面有哪些内容
 
@@ -45,13 +45,13 @@
 
 | 数据 | 来源 | 取数方式 |
 | --- | --- | --- |
-| 创业板指（399006）日线 | 腾讯行情（经 Worker 代理） | `GET /api/kline?symbol=sz399006&start=2010-01-01` |
-| 红利低波（H30269）日线 | 中证指数官网（经 Worker 代理） | `GET /api/csindex?symbol=H30269&start=20160803` |
+| 创业板指（399006）日线 | a-stock-api Worker（腾讯行情） | `GET /api/kline?symbol=sz399006&start=2010-01-01` |
+| 红利低波（H30269）日线 | a-stock-api Worker（中证指数官网） | `GET /api/csindex?symbol=H30269&start=20160803` |
 
 - Worker 基址：`https://a-stock-api.wj4020410.workers.dev`（详见 [a-stock-api](https://github.com/wj624/a-stock-api)）。
 - **H30269 必须走 `/api/csindex`**：它是中证自定义指数，腾讯没有日线，走 `/api/kline` 会拿到空数组。
 - 2026-10 之前用的是 AKShare（`stock_zh_index_daily` 等），已全部替换；换源后**口径未变**，历史读数可比。
-- Worker 侧自带 KV 缓存（1 小时），本仓库不再额外缓存。
+- Worker 侧自带 KV 缓存（1 小时）；此外 `main.py` 还有进程内缓存（`_cache` + `CACHE_TTL = 300` 秒），5 分钟内复用同一份结果。
 
 ## 四、自动运行
 
@@ -97,11 +97,11 @@ README.md                            本文件
 | 项 | 内容 |
 | --- | --- |
 | 用途 | 创业板指 vs 红利低波 的相对强弱轮动监控，产出**单文件自包含 HTML** 看板 |
-| 抓数 + 计算 + 渲染 | `.github/workflows/generate_page.py`（约 59 KB，全流程都在这一个文件里） |
+| 抓数 + 计算 + 渲染 | `.github/workflows/generate_page.py`（全流程都在这一个文件里） |
 | Web 服务入口 | `main.py`（FastAPI，本地或 Render 用，**不参与** Actions 出图） |
-| 构建产物 | `public/index.html`（约 3 MB，图表已内联），**由工作流自动提交回 main** |
+| 构建产物 | `public/index.html`（图表已内联），**由工作流自动提交回 main** |
 | 调度 | `daily_update.yml`，`cron: "0 16 * * *"`（UTC 16:00 = 北京 00:00） |
-| 兜底 | `watchdog.yml`，工作日北京时间 15:00–23:40 每 20 分钟检查一次页面是否已刷新 |
+| 兜底 | `watchdog.yml`，工作日北京时间 15:00–23:40 每 20 分钟检查一次页面是否已刷新（现已指向本仓库 `wj624/rotation-monitor`） |
 | 依赖 | `fastapi uvicorn pandas numpy requests`（无 akshare） |
 | 密钥 | **不需要任何 Secret**（Worker 免鉴权，Pages 用内置 token） |
 
@@ -145,11 +145,11 @@ README.md                            本文件
 - 注意：沙盒/部分 CI 网络访问不到 *.workers.dev，验证 Worker 可改用
   https://github.com/wj624/a-stock-api 的 README §9（读 KV 缓存值）或让用户在浏览器里打开端点 URL。
 
-【已知问题（修之前先确认，别当新 bug）】
-- .github/workflows/watchdog.yml 目前检查的是 **上游仓库 wwww1998/rotation-monitor** 的页面，
+【已修复：watchdog 现已指向本仓库】
+- .github/workflows/watchdog.yml 原先检查的是 **上游仓库 wwww1998/rotation-monitor** 的页面，
   并试图 dispatch **上游仓库** 的 workflow。这是复制上游代码留下的残留，GITHUB_TOKEN 也无权
-  触发别人仓库，因此对本仓库的兜底实际无效。若要修，把其中的 wwww1998/rotation-monitor
-  改成本仓库 wj624/rotation-monitor 即可。
+  触发别人仓库，因此对本仓库的兜底当时并未生效（这正是原「已知问题」，修之前先确认，别当新 bug）。
+  现已把其中的 wwww1998/rotation-monitor 改成本仓库 wj624/rotation-monitor，兜底恢复生效。
 
 【收尾】
 - 改了数据源/口径/阈值，必须同步更新 README 的「一、监控什么 / 三、数据来源 / 四、自动运行」。

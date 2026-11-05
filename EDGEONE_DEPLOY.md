@@ -6,7 +6,7 @@
 
 1. 登录 https://console.cloud.tencent.com/edgeone/pages
 2. 创建项目 → 选择「导入 Git 仓库」
-3. 授权 EdgeOne 访问你的 GitHub，选择仓库 `wwww1998/rotation-monitor`
+3. 授权 EdgeOne 访问你的 GitHub，选择仓库 `wj624/rotation-monitor`
 4. 配置构建：
    - **构建命令(Build command)**：留空（本项目为纯静态单文件，无需构建）
    - **输出目录(Output directory)**：`public`
@@ -16,11 +16,8 @@
 
 ## 每日自动更新
 
-- 本仓库的 GitHub Actions（`.github/workflows/daily_update.yml`）按固定时点运行，共 14 次/天：
-  - 北京时间 08:00（晨间）
-  - 北京时间 15:30、16:05、16:35、17:05、17:35、18:05、18:35、19:05、20:05、21:05、22:05、23:05、次日 00:05（收盘后密集重试）
-- **为什么排这么密**：GitHub 免费版的定时任务本身不可靠——实测延迟可达 4–7 小时且存在丢跑，而收盘后（北京时间 15:00 之后）正是其负载高峰、最容易被跳过。多排固定时点是为了提高「至少有一次跑成」的命中率；每次运行都会重新生成并提交页面，重复运行无副作用。
-- 另有 `watchdog.yml` 兜底：北京时间 15:00–23:40 每 20 分钟检查一次页面更新时间，若未按当日收盘刷新，则自动补触发本工作流。
+- 本仓库的 GitHub Actions（`.github/workflows/daily_update.yml`）每天定时运行 1 次：`cron: "0 16 * * *"`（UTC 16:00 = 北京时间次日 00:00）。
+- 另有 `watchdog.yml` 兜底：工作日（周一至周五）北京时间 15:00–23:40 每 20 分钟检查一次页面更新时间（`cron: "0,20,40 7-15 * * 1-5"`，每个工作日最多 27 次**检查**；只有页面未按当日收盘刷新时才补触发本工作流，并不是 27 次更新），用于应对定时任务延迟或丢跑。
 - Actions 生成最新页面后，会把完整 `index.html` 自动 commit + push 回 `main` 分支
 - EdgeOne Pages 检测到 `main` 分支有新的 push 后，即自动重新构建部署 → 网站数据自动刷新
 
@@ -39,7 +36,7 @@
 
 ## 文件说明
 
-- `public/index.html` — 网站唯一入口（约 3MB 自包含单文件，含全部样式/脚本/图表数据）
+- `public/index.html` — 网站唯一入口（自包含单文件，含全部样式/脚本/图表数据）
 - `.github/workflows/generate_page.py` — 数据抓取 + 策略回测 + 页面生成脚本（GitHub Actions 每日运行）
 - `.github/workflows/daily_update.yml` — 定时触发器，已扩展「提交 index.html 回 main」步骤
 
@@ -55,7 +52,7 @@
 
 ## 多站整合（导航首页方案）
 
-当前您 GitHub 账号下有 5 个独立数据看板仓库，均适合用 **子域名+导航首页**方式整合。每个仓库对应一个子域名，独立 EdgeOne 项目，导航首页作为总入口：
+当前您 GitHub 账号下有 4 个独立数据看板仓库，均适合用 **子域名+导航首页**方式整合。每个仓库对应一个子域名，独立 EdgeOne 项目，导航首页作为总入口：
 
 ```
  wangduoyu88.cn (主域名)
@@ -74,7 +71,7 @@
    - `rotation-monitor` → `public`
    - 其他 (`national-team-etf-flow` / `earl-etf-dashboard` / `dividend-dashboard`) → **根目录 `.`**（因为 index.html 在仓库根）
 3. 开始部署，部署后获得临时域名 → 自定义域名绑定 → 绑定对应子域名（如 `rotation.xxx.cn`）
-4. 导航首页 `portal.html`（已生成）绑定到你的主域名 `xxx.cn`
+4. 导航首页 `public/index.html`（已生成）绑定到你的主域名 `xxx.cn`
 
 > 所有子站都支持子路径挂载，无需修改代码——它们的资源引用都是相对路径，不依赖绝对路径。
 
@@ -98,4 +95,4 @@
 
 说明：EdgeOne Pages 部署一个仓库时，输出目录内的所有静态文件都会发布到对应 URL 路径。只要资源用相对路径（./xxx.js）或 CDN 绝对外链，就能在任意子路径正常工作。已逐仓核查，dividend-dashboard / national-team-etf-flow / earl-etf-dashboard 均无绝对 "/" 路径引用，可直接以根目录发布。
 
-导航首页 public/portal.html 已把上述全部子页面做成链接，打开主域名即可一键直达任意网页。
+导航首页 `public/index.html` 已把上述全部子页面做成链接，打开主域名即可一键直达任意网页。

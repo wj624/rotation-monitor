@@ -1,5 +1,9 @@
-fastapi>=0.104.0
-uvicorn>=0.24.0
-pandas>=2.0.0
-numpy>=1.24.0
-requests>=2.31.0
+# 锁定主版本上界：无人值守任务最怕上游大版本破坏性升级。
+# 不上钉具体小版本，避免与未来 Python 版本不兼容。
+fastapi>=0.104.0,<1
+uvicorn>=0.24.0,<1
+pandas>=2.0.0,<4
+numpy>=1.24.0,<3
+requests>=2.31.0,<3
+# generate_page.py 出图必需；render.yaml 也用本文件安装
+matplotlib>=3.7,<4

@@ -68,7 +68,7 @@ def pct_str(val):
 def run_backtest(data):
     """基准版：当日收盘判定信号 → 下一交易日开盘价执行换仓"""
     bd = data[(data['date'] >= BACKTEST_START)].copy().reset_index(drop=True)
-    if len(bd) < 20: return None, None
+    if len(bd) < 20: return None, None, None
 
     position = 'hldb'
     shares_cyb = 0.0
@@ -124,7 +124,7 @@ def run_backtest_rsi(data):
     其余时间空仓持现金；持有创业板中比值>40% → 卖回红利低波
     """
     bd = data[(data['date'] >= BACKTEST_START)].copy().reset_index(drop=True)
-    if len(bd) < 20: return None, None
+    if len(bd) < 20: return None, None, None
 
     # 计算创业板月K RSI(period) 与 月K跌幅，取"上月值"（无未来函数）
     monthly = bd.set_index('date')['close_cyb'].resample('M').last()
@@ -425,7 +425,7 @@ def generate_chart(nav_df, trades, max_dd, title_suffix='', hover_prefix='nav', 
     max_dd_idx = np.argmin(dd)
     max_dd_date = dates[max_dd_idx]
     max_dd_val = nav[max_dd_idx] / 1e6
-    label = '最大回撤: -37.4%' if not has_cn else f'最大回撤: {max_dd:.1f}%'
+    label = f'最大回撤: {max_dd:.1f}%'  # 用真实回测值，不再写死 -37.4%
     ax1.annotate(label, xy=(max_dd_date, max_dd_val),
                  xytext=(max_dd_date, max_dd_val * 1.15),
                  fontsize=10, color='#dc2626', fontweight='bold',
@@ -504,23 +504,23 @@ def generate_page():
     print("正在获取指数数据...")
 
     cyb_df = fetch_index_data(CYB_CODE, market="sz")
-    if cyb_df is None: print("ERROR: 无法获取创业板指数据"); return
+    if cyb_df is None: raise RuntimeError("无法获取创业板指数据")
     hldb_df = fetch_index_data(HLDB_CODE)
-    if hldb_df is None: print("ERROR: 无法获取红利低波指数数据"); return
+    if hldb_df is None: raise RuntimeError("无法获取红利低波指数数据")
 
     opts_cyb_open = "open" if "open" in cyb_df.columns else ("开盘" if "开盘" in cyb_df.columns else None)
     if "date" in cyb_df.columns: cyb = normalize(cyb_df, "date", "close", opts_cyb_open)
     elif "日期" in cyb_df.columns: cyb = normalize(cyb_df, "日期", "收盘", None)
-    else: print("ERROR: 无法识别创业板数据列名"); return
+    else: raise RuntimeError("无法识别创业板数据列名")
 
     opts_hldb_open = "open" if "open" in hldb_df.columns else ("开盘" if "开盘" in hldb_df.columns else None)
     if "date" in hldb_df.columns: hldb = normalize(hldb_df, "date", "close", opts_hldb_open)
     elif "日期" in hldb_df.columns: hldb = normalize(hldb_df, "日期", "收盘", opts_hldb_open)
-    else: print("ERROR: 无法识别红利低波数据列名"); return
+    else: raise RuntimeError("无法识别红利低波数据列名")
 
     merged = pd.merge(cyb, hldb, on="date", how="inner", suffixes=("_cyb", "_hldb"))
     merged = merged.dropna(subset=["close_cyb", "close_hldb"]).reset_index(drop=True)
-    if len(merged) < 20: print("ERROR: 数据不足"); return
+    if len(merged) < 20: raise RuntimeError("数据不足：有效样本不足 20 条")
 
     merged["ratio"] = merged["close_cyb"] / merged["close_hldb"]
     merged["cyb_pct"] = merged["close_cyb"].pct_change() * 100
@@ -540,12 +540,12 @@ def generate_page():
     # 运行回测
     print("运行回测...")
     nav_df, max_dd, trades = run_backtest(merged)
-    if nav_df is None: print("ERROR: 回测失败"); return
+    if nav_df is None: raise RuntimeError("回测失败：有效样本不足 20 条")
 
     # 运行 RSI 抄底版回测
     print("运行 RSI 抄底版回测...")
     rsi_nav_df, rsi_max_dd, rsi_trades = run_backtest_rsi(merged)
-    if rsi_nav_df is None: print("ERROR: RSI 回测失败"); return
+    if rsi_nav_df is None: raise RuntimeError("RSI 回测失败：有效样本不足 20 条")
 
     # 当前持仓（由回测状态机推导，用于20%-40%观望区间）
     current_pos = nav_df['position'].iloc[-1]
@@ -1237,7 +1237,7 @@ td:first-child {{ text-align: left; font-weight: 600; }}
 
   <!-- Footer -->
   <div class="footer">
-    <p>数据来源：AKShare（新浪财经 / 中证指数官网）</p>
+    <p>数据来源：自建 a-stock-api Worker</p>
     <p>策略逻辑：创业板与红利低波指数轮动，基于比值阈值判断</p>
     <p>⚠️ 本页面数据仅供参考，不构成投资建议</p>
     <p style="margin-top:4px;"><a href="javascript:location.reload()">刷新页面</a> 获取最新数据</p>

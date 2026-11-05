@@ -25,7 +25,7 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: 安装依赖
         run: |
@@ -38,6 +38,13 @@ jobs:
 
       - name: 同步完整 index.html 到 main 分支（供 EdgeOne Pages 检出）
         run: |
+          # 数据有效性守卫：关键产物必须存在、非空且 JSON 合法。
+          # 不做「必须是今天」的判定：节假日 / 披露滞后属正常（见 README 维护须知）。
+          for f in public/index.html; do
+            test -s "$f" || { echo "::error::守卫失败：$f 缺失或为空"; exit 1; }
+            case "$f" in *.json) python3 -m json.tool "$f" >/dev/null || { echo "::error::$f 不是合法 JSON"; exit 1; } ;; esac
+          done
+          echo "数据有效性守卫通过"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # 只跟踪 public/index.html，其他 public 产物不纳入

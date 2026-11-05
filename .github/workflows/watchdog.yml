@@ -35,7 +35,7 @@ jobs:
           stale=false
           if [[ ! "$now_hm" < "15:00" ]]; then
             upd=$(curl -sSL --max-time 60 -H 'Cache-Control: no-cache' \
-              "https://raw.githubusercontent.com/wwww1998/rotation-monitor/main/public/index.html" \
+              "https://raw.githubusercontent.com/wj624/rotation-monitor/main/public/index.html" \
               | grep -oP '更新于\s*\K\d{4}-\d{2}-\d{2} \d{2}:\d{2}' | head -1)
             echo "页面更新时间：${upd:-未找到}"
 
@@ -71,7 +71,7 @@ jobs:
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/wwww1998/rotation-monitor/actions/workflows/daily_update.yml/dispatches" \
+            "https://api.github.com/repos/wj624/rotation-monitor/actions/workflows/daily_update.yml/dispatches" \
             -d '{"ref":"main"}')
           echo "触发「每日更新监控数据」返回 HTTP ${code}"
           if [ "$code" != "204" ]; then
