@@ -31,7 +31,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y fonts-noto-cjk fontconfig
           fc-cache -f -v
-          pip install pandas numpy matplotlib requests
+          # pandas 3.x 移除 resample('M') 别名（须用 'ME'），且 Copy-on-Write 等变更
+          # 会破坏回测；无人值守任务锁 <3。代码侧已同步改用 'ME'，双保险。
+          pip install "pandas>=2.0.0,<3" "numpy<3" "matplotlib<4" "requests<3"
 
       - name: 生成监控页面
         run: python .github/workflows/generate_page.py

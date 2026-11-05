@@ -127,7 +127,7 @@ def run_backtest_rsi(data):
     if len(bd) < 20: return None, None, None
 
     # 计算创业板月K RSI(period) 与 月K跌幅，取"上月值"（无未来函数）
-    monthly = bd.set_index('date')['close_cyb'].resample('M').last()
+    monthly = bd.set_index('date')['close_cyb'].resample('ME').last()
     dl = monthly.diff()
     gain = dl.clip(lower=0).rolling(RSI_PERIOD).mean()
     loss = (-dl.clip(upper=0)).rolling(RSI_PERIOD).mean()
