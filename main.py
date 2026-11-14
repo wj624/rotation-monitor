@@ -8,6 +8,16 @@ import pandas as pd
 import numpy as np
 import json
 import os
+
+
+# 自建 Worker 鉴权：密钥只从环境变量读取，绝不写进代码或提交历史
+def _worker_headers(extra=None):
+    h = dict(extra or {})
+    k = os.environ.get("A_STOCK_API_KEY", "")
+    if k:
+        h["X-API-Key"] = k
+    return h
+
 import time
 import warnings
 from datetime import datetime, timedelta
@@ -36,13 +46,13 @@ def fetch_data():
         return _cache["data"]
 
     # 创业板指
-    j = requests.get(f"{API_BASE}/api/kline", params={"symbol": "sz399006", "start": "2010-01-01"}, timeout=60).json()
+    j = requests.get(f"{API_BASE}/api/kline", params={"symbol": "sz399006", "start": "2010-01-01"}, timeout=60, headers=_worker_headers()).json()
     cyb = pd.DataFrame(j.get("data", []))
     cyb["date"] = pd.to_datetime(cyb["date"])
     cyb = cyb.sort_values("date").reset_index(drop=True)
 
     # 红利低波
-    j = requests.get(f"{API_BASE}/api/csindex", params={"symbol": "H30269", "start": "20160803"}, timeout=60).json()
+    j = requests.get(f"{API_BASE}/api/csindex", params={"symbol": "H30269", "start": "20160803"}, timeout=60, headers=_worker_headers()).json()
     hldb = pd.DataFrame(j.get("data", []))
     hldb["date"] = pd.to_datetime(hldb["date"])
     hldb = hldb.sort_values("date").reset_index(drop=True)
