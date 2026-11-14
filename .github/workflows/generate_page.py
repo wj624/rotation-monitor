@@ -3,6 +3,16 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
+
+
+# 自建 Worker 鉴权：密钥只从环境变量读取，绝不写进代码或提交历史
+def _worker_headers(extra=None):
+    h = dict(extra or {})
+    k = os.environ.get("A_STOCK_API_KEY", "")
+    if k:
+        h["X-API-Key"] = k
+    return h
+
 import math
 import io
 import base64
@@ -30,11 +40,11 @@ def fetch_index_data(code, market="sh", start_date="20100101"):
     # 数据源统一改走 a-stock-api Worker（Cloudflare），彻底去掉对 akshare / 腾讯/中证接口的直连依赖。
     try:
         if code == "H30269":
-            j = requests.get(f"{API_BASE}/api/csindex", params={"symbol": code, "start": "20160803"}, timeout=60).json()
+            j = requests.get(f"{API_BASE}/api/csindex", params={"symbol": code, "start": "20160803"}, timeout=60, headers=_worker_headers()).json()
             df = pd.DataFrame(j.get("data", []))
         else:
             symbol = f"sz{code}" if market == "sz" else f"sh{code}"
-            j = requests.get(f"{API_BASE}/api/kline", params={"symbol": symbol, "start": "2010-01-01"}, timeout=60).json()
+            j = requests.get(f"{API_BASE}/api/kline", params={"symbol": symbol, "start": "2010-01-01"}, timeout=60, headers=_worker_headers()).json()
             df = pd.DataFrame(j.get("data", []))
         if df is None or len(df) == 0:
             return None
